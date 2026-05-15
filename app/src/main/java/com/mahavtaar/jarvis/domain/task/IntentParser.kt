@@ -7,6 +7,14 @@ import javax.inject.Singleton
 class IntentParser @Inject constructor() {
     private val tagRegex = "\\[([A-Z_]+)(?::([^\\]]+))?]".toRegex()
 
+    // Matches a well-formed tag like [TAG:params] or an incomplete tag starting with [ that continues to the end of string
+    // e.g. "I'll do that right away. [FLASHLIG" -> hides "[FLASHLIG"
+    private val streamingCleanRegex = "\\[([A-Z_]+(?::[^\\]]*]?)?)?\$|\\[([A-Z_]+)(?::([^\\]]+))?]".toRegex()
+
+    fun cleanStreamingText(rawStreamText: String): String {
+        return rawStreamText.replace(streamingCleanRegex, "").trim()
+    }
+
     fun parse(rawResponse: String): ParsedResponse {
         val intents = mutableListOf<JarvisIntent>()
         var spokenText = rawResponse
@@ -73,7 +81,6 @@ class IntentParser @Inject constructor() {
             }
         }
 
-        // Clean all tags from the spoken text
         spokenText = spokenText.replace(tagRegex, "").trim()
 
         return ParsedResponse(spokenText, intents)

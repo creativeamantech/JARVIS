@@ -182,29 +182,42 @@ class MainViewModel @Inject constructor(
 
             responseFlow.collect { chunk ->
                 rawResponse += chunk
-                // We show the raw text streaming (tags and all) temporarily
-                _currentStreamingText.value = rawResponse
+                // Clean the streaming text dynamically so tags don't flash on screen
+                _currentStreamingText.value = intentParser.cleanStreamingText(rawResponse)
             }
 
             _currentStreamingText.value = ""
 
-            // 1. Parse Intents
+            // 1. Parse Intents fully after stream is complete
             val parsedResult = intentParser.parse(rawResponse)
 
             // 2. Execute tasks in parallel if any
-            val actionBadges = parsedResult.intents.map { intent ->
+            val taskResults = parsedResult.intents.map { intent ->
                 async { taskExecutor.execute(intent) }
             }.awaitAll()
+
+            // Map purely to badges for the UI Message history
+            val actionBadges = taskResults.map { it.badge }
+
+            // Extract any spoken feedback overrides (e.g., permission denials)
+            val spokenOverrides = taskResults.mapNotNull { it.spokenFeedback }
 
             // 3. Save clean message with badges
             addMessage(Message(text = parsedResult.spokenText, isUser = false, actions = actionBadges))
 
-            // 4. Speak only the clean text
+            // 4. Formulate the final spoken text
+            var finalSpokenText = parsedResult.spokenText
+            if (spokenOverrides.isNotEmpty()) {
+                finalSpokenText += " " + spokenOverrides.joinToString(" ")
+            }
+            finalSpokenText = finalSpokenText.trim()
+
+            // 5. Speak it out
             _assistantState.value = AssistantState.SPEAKING
-            if (parsedResult.spokenText.isNotBlank()) {
-                jarvisTTS.speak(parsedResult.spokenText)
+            if (finalSpokenText.isNotBlank()) {
+                jarvisTTS.speak(finalSpokenText)
             } else {
-                // If it was purely a task command, transition to idle since it has nothing to say
+                // If it was purely a task command and no extra speech or overrides
                  _assistantState.value = AssistantState.IDLE
             }
         }
