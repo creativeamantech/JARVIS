@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 sealed class Screen(val route: String) {
     object Onboarding : Screen("onboarding")
     object Main : Screen("main")
+    object Settings : Screen("settings")
 }
 
 @Composable
@@ -30,7 +31,18 @@ fun JarvisNavGraph(
             )
         }
         composable(Screen.Main.route) {
-            MainScreen()
+            MainScreen(
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route)
+                }
+            )
+        }
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }

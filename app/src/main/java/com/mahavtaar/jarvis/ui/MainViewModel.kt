@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.mahavtaar.jarvis.domain.llm.GemmaEngine
 import com.mahavtaar.jarvis.domain.voice.JarvisTTS
 import com.mahavtaar.jarvis.domain.voice.VoiceRecognizer
+import com.mahavtaar.jarvis.data.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +32,8 @@ data class Message(
 class MainViewModel @Inject constructor(
     private val voiceRecognizer: VoiceRecognizer,
     private val jarvisTTS: JarvisTTS,
-    private val gemmaEngine: GemmaEngine
+    private val gemmaEngine: GemmaEngine,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _assistantState = MutableStateFlow<AssistantState>(AssistantState.IDLE)
@@ -81,6 +83,12 @@ class MainViewModel @Inject constructor(
                 }
             }
         }
+
+        viewModelScope.launch {
+            settingsRepository.modelPath.collect { path ->
+                gemmaEngine.updateModelPath(path)
+            }
+        }
     }
 
     fun startListening() {
@@ -107,9 +115,9 @@ class MainViewModel @Inject constructor(
             var fullResponse = ""
 
             val responseFlow = if (isModelAvailable) {
-                gemmaEngine.generateMockResponseStream(text)
+                gemmaEngine.generateResponseStream(text)
             } else {
-                gemmaEngine.generateMockResponseStream(text)
+                gemmaEngine.generateResponseStream(text)
             }
 
             responseFlow.collect { chunk ->

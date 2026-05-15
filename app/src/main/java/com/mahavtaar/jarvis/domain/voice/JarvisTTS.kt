@@ -2,14 +2,19 @@ package com.mahavtaar.jarvis.domain.voice
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
+import com.mahavtaar.jarvis.data.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
 class JarvisTTS @Inject constructor(
-    context: Context
+    context: Context,
+    private val settingsRepository: SettingsRepository
 ) : TextToSpeech.OnInitListener {
 
     private var tts: TextToSpeech? = null
@@ -18,8 +23,19 @@ class JarvisTTS @Inject constructor(
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
+    private var currentPitch = 0.85f
+
     init {
         tts = TextToSpeech(context, this)
+
+        CoroutineScope(Dispatchers.Main).launch {
+            settingsRepository.ttsPitch.collect { pitch ->
+                currentPitch = pitch
+                if (isInitialized) {
+                    tts?.setPitch(currentPitch)
+                }
+            }
+        }
     }
 
     override fun onInit(status: Int) {
@@ -30,7 +46,7 @@ class JarvisTTS @Inject constructor(
                     // Fallback to default
                     it.setLanguage(Locale.getDefault())
                 }
-                it.setPitch(0.85f)
+                it.setPitch(currentPitch)
                 it.setSpeechRate(0.95f)
                 isInitialized = true
 
@@ -43,6 +59,7 @@ class JarvisTTS @Inject constructor(
                         _isSpeaking.value = false
                     }
 
+                    @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
                         _isSpeaking.value = false
                     }

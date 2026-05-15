@@ -3,10 +3,14 @@ package com.mahavtaar.jarvis.ui
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,12 +21,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlin.math.max
 
 @Composable
 fun MainScreen(
+    onNavigateToSettings: () -> Unit,
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val assistantState by viewModel.assistantState.collectAsState()
@@ -30,78 +36,95 @@ fun MainScreen(
     val streamingText by viewModel.currentStreamingText.collectAsState()
     val rmsAmplitude by viewModel.rmsAmplitude.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Conversation Feed
-        LazyColumn(
+    Box(modifier = Modifier.fillMaxSize()) {
+        HudOverlay()
+
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .padding(16.dp),
-            contentPadding = PaddingValues(bottom = 16.dp),
-            reverseLayout = true
+                .fillMaxSize()
+                .background(Color.Transparent)
         ) {
-            if (streamingText.isNotEmpty()) {
-                item {
-                    MessageBubble(Message(text = streamingText, isUser = false), isStreaming = true)
+            // Conversation Feed
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 24.dp),
+                contentPadding = PaddingValues(top = 64.dp, bottom = 16.dp),
+                reverseLayout = true
+            ) {
+                if (streamingText.isNotEmpty()) {
+                    item {
+                        MessageBubble(Message(text = streamingText, isUser = false), isStreaming = true)
+                    }
+                }
+                items(messages.reversed()) { message ->
+                    MessageBubble(message = message, isStreaming = false)
                 }
             }
-            items(messages.reversed()) { message ->
-                MessageBubble(message = message, isStreaming = false)
+
+            // Visualizer and Status
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    ArcReactorVisualizer(state = assistantState, rmsAmplitude = rmsAmplitude)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = when (val state = assistantState) {
+                            is AssistantState.IDLE -> "SYSTEM STANDBY"
+                            is AssistantState.LISTENING -> "LISTENING..."
+                            is AssistantState.PROCESSING_STT -> "PROCESSING AUDIO"
+                            is AssistantState.THINKING -> "ANALYZING..."
+                            is AssistantState.SPEAKING -> "TRANSMITTING"
+                            is AssistantState.ERROR -> state.message.uppercase()
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (assistantState is AssistantState.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
-        }
 
-        // Visualizer and Status
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                ArcReactorVisualizer(state = assistantState, rmsAmplitude = rmsAmplitude)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = when (val state = assistantState) {
-                        is AssistantState.IDLE -> "SYSTEM STANDBY"
-                        is AssistantState.LISTENING -> "LISTENING..."
-                        is AssistantState.PROCESSING_STT -> "PROCESSING AUDIO"
-                        is AssistantState.THINKING -> "ANALYZING..."
-                        is AssistantState.SPEAKING -> "TRANSMITTING"
-                        is AssistantState.ERROR -> state.message.uppercase()
+            // Hold to talk button
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+                    .height(64.dp)
+                    .background(
+                        color = if (assistantState == AssistantState.LISTENING) MaterialTheme.colorScheme.error.copy(alpha=0.8f) else MaterialTheme.colorScheme.primary.copy(alpha=0.8f),
+                        shape = RoundedCornerShape(32.dp)
+                    )
+                    .pointerInput(assistantState) {
+                        if (assistantState == AssistantState.IDLE || assistantState == AssistantState.LISTENING || assistantState is AssistantState.ERROR) {
+                            awaitPointerEventScope {
+                                awaitFirstDown()
+                                viewModel.startListening()
+                                waitForUpOrCancellation()
+                                viewModel.stopListening()
+                            }
+                        }
                     },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (assistantState is AssistantState.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (assistantState == AssistantState.LISTENING) "RELEASE TO SEND" else "HOLD TO TALK",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }
 
-        // Push to talk button
-        Button(
-            onClick = {
-                if (assistantState == AssistantState.LISTENING) {
-                    viewModel.stopListening()
-                } else {
-                    viewModel.startListening()
-                }
-            },
+        IconButton(
+            onClick = onNavigateToSettings,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (assistantState == AssistantState.LISTENING) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ),
-            enabled = assistantState == AssistantState.IDLE || assistantState == AssistantState.LISTENING || assistantState is AssistantState.ERROR
+                .padding(24.dp)
+                .align(Alignment.TopEnd)
         ) {
-            Text(
-                text = if (assistantState == AssistantState.LISTENING) "STOP" else "PUSH TO TALK",
-                style = MaterialTheme.typography.labelSmall
-            )
+            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -124,7 +147,7 @@ fun MessageBubble(message: Message, isStreaming: Boolean) {
                 bottomEnd = if (isJarvis) 16.dp else 4.dp
             ),
             colors = CardDefaults.cardColors(
-                containerColor = if (isJarvis) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                containerColor = if (isJarvis) MaterialTheme.colorScheme.surface.copy(alpha=0.9f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
             ),
             modifier = Modifier.widthIn(max = 300.dp)
         ) {
@@ -151,7 +174,6 @@ fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
         )
     )
 
-    // Normalize RMS amplitude, typical values are between -2f and 10f. Let's map it to a scale modifier
     val normalizedAmplitude = max(0f, (rmsAmplitude + 2f) / 10f)
     val amplitudeScale = 1f + (normalizedAmplitude * 0.5f)
 
@@ -174,14 +196,12 @@ fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
         )
     )
 
-    // Combine programmatic pulse with actual mic amplitude when listening
     val finalScale = if (state is AssistantState.LISTENING) pulse * amplitudeScale else pulse
 
     Canvas(modifier = Modifier.size(120.dp)) {
         val center = Offset(size.width / 2, size.height / 2)
         val baseRadius = size.width / 3f
 
-        // Outer rings
         for (i in 0..3) {
             val scale = 1f + (i * 0.2f)
             val alpha = when (state) {
@@ -200,7 +220,6 @@ fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
             )
         }
 
-        // Rotating arc segments
         val ringColor = if (state is AssistantState.ERROR) Color(0xFFFF3333) else Color(0xFF00FFD1)
         rotate(baseRotation, center) {
             for (i in 0..5) {
@@ -216,7 +235,6 @@ fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
             }
         }
 
-        // Center core
         val coreColors = if (state is AssistantState.ERROR) {
             listOf(Color(0xFFFF3333), Color(0xFF660000))
         } else {

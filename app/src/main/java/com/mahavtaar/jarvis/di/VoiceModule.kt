@@ -1,6 +1,7 @@
 package com.mahavtaar.jarvis.di
 
 import android.content.Context
+import com.mahavtaar.jarvis.data.SettingsRepository
 import com.mahavtaar.jarvis.domain.voice.JarvisTTS
 import com.mahavtaar.jarvis.domain.voice.VoiceRecognizer
 import dagger.Module
@@ -22,7 +23,10 @@ object VoiceModule {
 
     @Provides
     @Singleton
-    fun provideJarvisTTS(@ApplicationContext context: Context): JarvisTTS {
-        return JarvisTTS(context)
+    fun provideJarvisTTS(
+        @ApplicationContext context: Context,
+        settingsRepository: SettingsRepository
+    ): JarvisTTS {
+        return JarvisTTS(context, settingsRepository)
     }
 }
