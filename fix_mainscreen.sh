@@ -1,0 +1,3 @@
+sed -i 's/val rmsAmplitude by viewModel.rmsAmplitude.collectAsState()/val rmsAmplitude by viewModel.rmsAmplitude.collectAsState()\n    val isStandbyMode by viewModel.isStandbyMode.collectAsState()/g' app/src/main/java/com/mahavtaar/jarvis/ui/MainScreen.kt
+sed -i 's/ArcReactorVisualizer(state = assistantState, rmsAmplitude = rmsAmplitude)/ArcReactorVisualizer(state = assistantState, rmsAmplitude = rmsAmplitude, isStandbyMode = isStandbyMode)/g' app/src/main/java/com/mahavtaar/jarvis/ui/MainScreen.kt
+sed -i 's/fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float)/fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float, isStandbyMode: Boolean = false)/g' app/src/main/java/com/mahavtaar/jarvis/ui/MainScreen.kt

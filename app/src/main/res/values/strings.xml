@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">J.A.R.V.I.S</string>
+    <string name="accessibility_service_description">J.A.R.V.I.S requires accessibility to automate actions, type text, and interact with other applications on your behalf.</string>
+</resources>

@@ -1,0 +1,1 @@
+sed -i '/import com.mahavtaar.jarvis.domain.appcontrol.JarvisAccessibilityService/a import com.mahavtaar.jarvis.ui.checkUsageStatsPermission' app/src/main/java/com/mahavtaar/jarvis/ui/OnboardingScreen.kt
