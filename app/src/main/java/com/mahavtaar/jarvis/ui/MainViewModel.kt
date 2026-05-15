@@ -2,16 +2,19 @@ package com.mahavtaar.jarvis.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mahavtaar.jarvis.data.SettingsRepository
 import com.mahavtaar.jarvis.domain.llm.GemmaEngine
+import com.mahavtaar.jarvis.domain.task.IntentParser
+import com.mahavtaar.jarvis.domain.task.TaskExecutor
 import com.mahavtaar.jarvis.domain.voice.JarvisTTS
 import com.mahavtaar.jarvis.domain.voice.VoiceRecognizer
-import com.mahavtaar.jarvis.data.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -27,7 +30,8 @@ sealed class AssistantState {
 data class Message(
     val id: String = java.util.UUID.randomUUID().toString(),
     val text: String,
-    val isUser: Boolean
+    val isUser: Boolean,
+    val actions: List<String> = emptyList()
 )
 
 @HiltViewModel
@@ -35,7 +39,9 @@ class MainViewModel @Inject constructor(
     private val voiceRecognizer: VoiceRecognizer,
     private val jarvisTTS: JarvisTTS,
     private val gemmaEngine: GemmaEngine,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val intentParser: IntentParser,
+    private val taskExecutor: TaskExecutor
 ) : ViewModel() {
 
     private val _assistantState = MutableStateFlow<AssistantState>(AssistantState.IDLE)
@@ -110,7 +116,6 @@ class MainViewModel @Inject constructor(
                     try {
                         gemmaEngine.initialize()
                     } catch (e: Exception) {
-                        // handled on next generation attempt
                     }
                 }
                 isFirstLoad = false
@@ -165,7 +170,7 @@ class MainViewModel @Inject constructor(
 
         inferenceJob = viewModelScope.launch {
             _currentStreamingText.value = ""
-            var fullResponse = ""
+            var rawResponse = ""
 
             val contextPrompt = buildContextPrompt()
 
@@ -176,15 +181,32 @@ class MainViewModel @Inject constructor(
             }
 
             responseFlow.collect { chunk ->
-                fullResponse += chunk
-                _currentStreamingText.value = fullResponse
+                rawResponse += chunk
+                // We show the raw text streaming (tags and all) temporarily
+                _currentStreamingText.value = rawResponse
             }
 
-            addMessage(Message(text = fullResponse, isUser = false))
             _currentStreamingText.value = ""
 
+            // 1. Parse Intents
+            val parsedResult = intentParser.parse(rawResponse)
+
+            // 2. Execute tasks in parallel if any
+            val actionBadges = parsedResult.intents.map { intent ->
+                async { taskExecutor.execute(intent) }
+            }.awaitAll()
+
+            // 3. Save clean message with badges
+            addMessage(Message(text = parsedResult.spokenText, isUser = false, actions = actionBadges))
+
+            // 4. Speak only the clean text
             _assistantState.value = AssistantState.SPEAKING
-            jarvisTTS.speak(fullResponse)
+            if (parsedResult.spokenText.isNotBlank()) {
+                jarvisTTS.speak(parsedResult.spokenText)
+            } else {
+                // If it was purely a task command, transition to idle since it has nothing to say
+                 _assistantState.value = AssistantState.IDLE
+            }
         }
     }
 

@@ -1,0 +1,1 @@
+sed -i '15i \    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.telephony" android:required="false" />' app/src/main/AndroidManifest.xml

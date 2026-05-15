@@ -9,9 +9,9 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,9 +24,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.max
 
 @Composable
@@ -154,24 +157,61 @@ fun MessageBubble(message: Message, isStreaming: Boolean) {
             .padding(vertical = 4.dp),
         contentAlignment = if (isJarvis) Alignment.CenterStart else Alignment.CenterEnd
     ) {
-        Card(
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (isJarvis) 4.dp else 16.dp,
-                bottomEnd = if (isJarvis) 16.dp else 4.dp
-            ),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isJarvis) MaterialTheme.colorScheme.surface.copy(alpha=0.9f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-            ),
-            modifier = Modifier.widthIn(max = 300.dp)
-        ) {
-            Text(
-                text = message.text + if (isStreaming) " █" else "",
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isJarvis) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(16.dp)
-            )
+        Column(horizontalAlignment = if (isJarvis) Alignment.Start else Alignment.End) {
+            if (message.text.isNotBlank() || isStreaming) {
+                Card(
+                    shape = RoundedCornerShape(
+                        topStart = 16.dp,
+                        topEnd = 16.dp,
+                        bottomStart = if (isJarvis) 4.dp else 16.dp,
+                        bottomEnd = if (isJarvis) 16.dp else 4.dp
+                    ),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isJarvis) MaterialTheme.colorScheme.surface.copy(alpha=0.9f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                    ),
+                    modifier = Modifier.widthIn(max = 300.dp)
+                ) {
+                    Text(
+                        text = message.text + if (isStreaming) " █" else "",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isJarvis) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+
+            // Action Badges
+            if (message.actions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                message.actions.forEach { action ->
+                    Surface(
+                        color = Color(0xFFFFD700).copy(alpha = 0.1f), // Gold tint for actions
+                        shape = RoundedCornerShape(4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.5f)),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFFFFD700),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "ACTION: \$action",
+                                color = Color(0xFFFFD700),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
