@@ -7,9 +7,11 @@ import com.mahavtaar.jarvis.domain.voice.JarvisTTS
 import com.mahavtaar.jarvis.domain.voice.VoiceRecognizer
 import com.mahavtaar.jarvis.data.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -50,6 +52,11 @@ class MainViewModel @Inject constructor(
     val isModelAvailable: Boolean
         get() = gemmaEngine.isModelAvailable()
 
+    private var inferenceJob: Job? = null
+    private var contextWindowSize: Int = 4096
+
+    private var isFirstLoad = true
+
     init {
         viewModelScope.launch {
             voiceRecognizer.recognizedText.collect { text ->
@@ -85,14 +92,37 @@ class MainViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            settingsRepository.contextWindowSize.collect { size ->
+                contextWindowSize = size
+            }
+        }
+
+        viewModelScope.launch {
             settingsRepository.modelPath.collect { path ->
                 gemmaEngine.updateModelPath(path)
+
+                if (!isFirstLoad) {
+                    inferenceJob?.cancel()
+                    gemmaEngine.close()
+                    _assistantState.value = AssistantState.SPEAKING
+                    jarvisTTS.speak("Reloading core systems, sir.")
+
+                    try {
+                        gemmaEngine.initialize()
+                    } catch (e: Exception) {
+                        // handled on next generation attempt
+                    }
+                }
+                isFirstLoad = false
             }
         }
     }
 
     fun startListening() {
-        if (_assistantState.value == AssistantState.IDLE || _assistantState.value is AssistantState.ERROR) {
+        if (_assistantState.value == AssistantState.IDLE || _assistantState.value is AssistantState.ERROR || _assistantState.value == AssistantState.SPEAKING || _assistantState.value == AssistantState.THINKING) {
+            inferenceJob?.cancel()
+            gemmaEngine.close()
+
             jarvisTTS.stop()
             _assistantState.value = AssistantState.LISTENING
             voiceRecognizer.startListening()
@@ -102,7 +132,30 @@ class MainViewModel @Inject constructor(
     fun stopListening() {
         if (_assistantState.value == AssistantState.LISTENING) {
             voiceRecognizer.stopListening()
-            _assistantState.value = AssistantState.IDLE
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(500)
+                if (_assistantState.value == AssistantState.LISTENING) {
+                    _assistantState.value = AssistantState.IDLE
+                }
+            }
+        }
+    }
+
+    private fun buildContextPrompt(): String {
+        val maxChars = contextWindowSize * 4
+        var currentLength = 0
+        val contextMessages = mutableListOf<Message>()
+
+        for (message in _messages.value.reversed()) {
+            if (currentLength + message.text.length > maxChars) {
+                break
+            }
+            contextMessages.add(0, message)
+            currentLength += message.text.length
+        }
+
+        return contextMessages.joinToString("\n") {
+            if (it.isUser) "User: \${it.text}" else "J.A.R.V.I.S: \${it.text}"
         }
     }
 
@@ -110,14 +163,16 @@ class MainViewModel @Inject constructor(
         addMessage(Message(text = text, isUser = true))
         _assistantState.value = AssistantState.THINKING
 
-        viewModelScope.launch {
+        inferenceJob = viewModelScope.launch {
             _currentStreamingText.value = ""
             var fullResponse = ""
 
+            val contextPrompt = buildContextPrompt()
+
             val responseFlow = if (isModelAvailable) {
-                gemmaEngine.generateResponseStream(text)
+                gemmaEngine.generateResponseStream(contextPrompt)
             } else {
-                gemmaEngine.generateResponseStream(text)
+                gemmaEngine.generateMockResponseStream(text)
             }
 
             responseFlow.collect { chunk ->

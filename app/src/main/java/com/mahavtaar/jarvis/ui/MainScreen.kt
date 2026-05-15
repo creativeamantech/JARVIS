@@ -3,11 +3,13 @@ package com.mahavtaar.jarvis.ui
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -24,6 +26,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
 import kotlin.math.max
 
 @Composable
@@ -99,12 +102,24 @@ fun MainScreen(
                         shape = RoundedCornerShape(32.dp)
                     )
                     .pointerInput(assistantState) {
-                        if (assistantState == AssistantState.IDLE || assistantState == AssistantState.LISTENING || assistantState is AssistantState.ERROR) {
-                            awaitPointerEventScope {
-                                awaitFirstDown()
-                                viewModel.startListening()
-                                waitForUpOrCancellation()
-                                viewModel.stopListening()
+                        if (assistantState == AssistantState.IDLE || assistantState == AssistantState.LISTENING || assistantState is AssistantState.ERROR || assistantState == AssistantState.SPEAKING || assistantState == AssistantState.THINKING) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown()
+                                val holdJob = kotlinx.coroutines.GlobalScope.launch {
+                                    delay(300)
+                                    viewModel.startListening()
+                                }
+                                val up = waitForUpOrCancellation()
+                                if (up != null) {
+                                    if (holdJob.isActive) {
+                                        // Tap was too quick, abort
+                                        holdJob.cancel()
+                                    } else {
+                                        viewModel.stopListening()
+                                    }
+                                } else {
+                                     viewModel.stopListening()
+                                }
                             }
                         }
                     },
