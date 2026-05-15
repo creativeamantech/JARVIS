@@ -1,0 +1,2 @@
+sed -i 's/Uri.parse("https:\/\/wa.me\\/$number?text=${Uri.encode(message)}")/Uri.parse("https:\/\/wa.me\/$number?text=${Uri.encode(message)}")/g' app/src/main/java/com/mahavtaar/jarvis/domain/appcontrol/AppDeepLinkHandler.kt
+sed -i 's/Uri.parse("tg:\/\/resolve?domain=$username\&text=${Uri.encode(message)}")/Uri.parse("tg:\/\/resolve?domain=$username\&text=${Uri.encode(message)}")/g' app/src/main/java/com/mahavtaar/jarvis/domain/appcontrol/AppDeepLinkHandler.kt
