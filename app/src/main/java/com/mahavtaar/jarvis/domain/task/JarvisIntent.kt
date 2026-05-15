@@ -16,6 +16,18 @@ sealed class JarvisIntent {
     data class SettingsToggle(val setting: String, val state: String) : JarvisIntent()
     data class SetBrightness(val level: Int) : JarvisIntent()
     data class DoNotDisturb(val on: Boolean) : JarvisIntent()
+
+    // Phase 4 - App Control Intents
+    data class WhatsAppMsg(val number: String, val message: String) : JarvisIntent()
+    data class TelegramMsg(val username: String, val message: String) : JarvisIntent()
+    data class AppMsg(val packageName: String, val message: String) : JarvisIntent()
+    data class AppClose(val packageName: String) : JarvisIntent()
+    object GlobalBack : JarvisIntent()
+    object GlobalHome : JarvisIntent()
+    object GlobalRecents : JarvisIntent()
+    object ScreenRead : JarvisIntent()
+    data class ShareText(val packageName: String?, val text: String) : JarvisIntent()
+    data class AppUsage(val packageName: String?) : JarvisIntent()
 }
 
 data class ParsedResponse(

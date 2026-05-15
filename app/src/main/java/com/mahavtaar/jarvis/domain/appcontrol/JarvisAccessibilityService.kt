@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.delay
 
 class JarvisAccessibilityService : AccessibilityService() {
 
@@ -26,11 +27,30 @@ class JarvisAccessibilityService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
+    suspend fun waitForPackage(targetPackage: String, timeoutMs: Long = 3000): Boolean {
+        val intervalMs = 200L
+        var elapsed = 0L
+        while (elapsed < timeoutMs) {
+            val rootNode = rootInActiveWindow
+            if (rootNode?.packageName?.toString()?.contains(targetPackage, ignoreCase = true) == true) {
+                return true
+            }
+            delay(intervalMs)
+            elapsed += intervalMs
+        }
+        return false
+    }
+
     fun typeText(text: String, targetPackage: String? = null): Boolean {
         val rootNode = rootInActiveWindow ?: return false
         val editTexts = findEditTexts(rootNode)
 
+        // Prioritize nodes containing "message" or "input" in their View ID
         val targetNode = editTexts.firstOrNull {
+            (targetPackage == null || it.packageName?.toString() == targetPackage) &&
+            (it.viewIdResourceName?.contains("message", ignoreCase = true) == true ||
+             it.viewIdResourceName?.contains("input", ignoreCase = true) == true)
+        } ?: editTexts.firstOrNull {
             targetPackage == null || it.packageName?.toString() == targetPackage
         } ?: editTexts.firstOrNull()
 

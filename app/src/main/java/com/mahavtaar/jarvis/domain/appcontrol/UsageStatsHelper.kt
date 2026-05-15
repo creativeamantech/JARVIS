@@ -7,32 +7,36 @@ import java.util.Calendar
 
 object UsageStatsHelper {
     fun getForegroundApp(context: Context): String? {
-        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val endTime = System.currentTimeMillis()
-        val beginTime = endTime - 1000 * 60 * 5
+        return runCatching {
+            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val endTime = System.currentTimeMillis()
+            val beginTime = endTime - 1000 * 60 * 5
 
-        val usageEvents = usageStatsManager.queryEvents(beginTime, endTime)
-        val event = android.app.usage.UsageEvents.Event()
-        var currentForegroundApp: String? = null
+            val usageEvents = usageStatsManager.queryEvents(beginTime, endTime)
+            val event = android.app.usage.UsageEvents.Event()
+            var currentForegroundApp: String? = null
 
-        while (usageEvents.hasNextEvent()) {
-            usageEvents.getNextEvent(event)
-            if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
-                currentForegroundApp = event.packageName
+            while (usageEvents.hasNextEvent()) {
+                usageEvents.getNextEvent(event)
+                if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
+                    currentForegroundApp = event.packageName
+                }
             }
-        }
-        return currentForegroundApp
+            currentForegroundApp
+        }.getOrNull()
     }
 
     fun getDailyScreenTime(context: Context, packageName: String): Long {
-        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
+        return runCatching {
+            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val calendar = Calendar.getInstance()
+            calendar.set(Calendar.HOUR_OF_DAY, 0)
+            calendar.set(Calendar.MINUTE, 0)
+            calendar.set(Calendar.SECOND, 0)
 
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, calendar.timeInMillis, System.currentTimeMillis())
-        return stats.find { it.packageName == packageName }?.totalTimeInForeground ?: 0L
+            val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, calendar.timeInMillis, System.currentTimeMillis())
+            stats?.find { it.packageName == packageName }?.totalTimeInForeground ?: 0L
+        }.getOrDefault(0L)
     }
 
     fun formatScreenTime(timeMs: Long): String {
