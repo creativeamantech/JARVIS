@@ -14,7 +14,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -39,6 +39,7 @@ android {
         jvmTarget = "1.8"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     composeOptions {
@@ -92,6 +93,12 @@ dependencies {
 
     // Lottie (optional, for animations)
     implementation("com.airbnb.android:lottie-compose:6.6.0")
+
+    // Vosk
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
+    // implementation("com.alphacep:vosk-android:0.3.38")
+    // implementation("com.alphacep:vosk-android:0.3.32@aar")
+    implementation("com.alphacephei:vosk-android:0.3.32@aar")
 
     // Tests
     testImplementation("junit:junit:4.13.2")

@@ -41,6 +41,7 @@ fun MainScreen(
     val messages by viewModel.messages.collectAsState()
     val streamingText by viewModel.currentStreamingText.collectAsState()
     val rmsAmplitude by viewModel.rmsAmplitude.collectAsState()
+    val isStandbyMode by viewModel.isStandbyMode.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         HudOverlay()
@@ -76,7 +77,7 @@ fun MainScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    ArcReactorVisualizer(state = assistantState, rmsAmplitude = rmsAmplitude)
+                    ArcReactorVisualizer(state = assistantState, rmsAmplitude = rmsAmplitude, isStandbyMode = isStandbyMode)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
@@ -217,7 +218,7 @@ fun MessageBubble(message: Message, isStreaming: Boolean) {
 }
 
 @Composable
-fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
+fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float, isStandbyMode: Boolean = false) {
     val infiniteTransition = rememberInfiniteTransition()
 
     val baseRotation by infiniteTransition.animateFloat(
@@ -253,6 +254,8 @@ fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
 
     val finalScale = if (state is AssistantState.LISTENING) pulse * amplitudeScale else pulse
 
+    val baseAlphaModifier = if (isStandbyMode) 0.3f else 1.0f
+
     Canvas(modifier = Modifier.size(120.dp)) {
         val center = Offset(size.width / 2, size.height / 2)
         val baseRadius = size.width / 3f
@@ -268,7 +271,7 @@ fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
             val color = if (state is AssistantState.ERROR) Color(0xFFFF3333) else Color(0xFF00BFFF)
 
             drawCircle(
-                color = color.copy(alpha = alpha * 0.3f),
+                color = color.copy(alpha = alpha * 0.3f * baseAlphaModifier),
                 radius = baseRadius * scale * finalScale,
                 center = center,
                 style = Stroke(width = (4 - i).dp.toPx())
@@ -280,7 +283,7 @@ fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
             for (i in 0..5) {
                 val angle = i * 60f
                 drawArc(
-                    color = ringColor.copy(alpha = 0.7f),
+                    color = ringColor.copy(alpha = 0.7f * baseAlphaModifier),
                     startAngle = angle, sweepAngle = 30f,
                     useCenter = false,
                     topLeft = Offset(center.x - baseRadius * 0.6f, center.y - baseRadius * 0.6f),

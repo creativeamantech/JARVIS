@@ -3,11 +3,13 @@ package com.mahavtaar.jarvis.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mahavtaar.jarvis.data.SettingsRepository
+import com.mahavtaar.jarvis.domain.appcontrol.BatteryMonitor
 import com.mahavtaar.jarvis.domain.llm.GemmaEngine
 import com.mahavtaar.jarvis.domain.task.IntentParser
 import com.mahavtaar.jarvis.domain.task.TaskExecutor
 import com.mahavtaar.jarvis.domain.voice.JarvisTTS
 import com.mahavtaar.jarvis.domain.voice.VoiceRecognizer
+import com.mahavtaar.jarvis.domain.voice.WakeWordService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -41,7 +43,8 @@ class MainViewModel @Inject constructor(
     private val gemmaEngine: GemmaEngine,
     private val settingsRepository: SettingsRepository,
     private val intentParser: IntentParser,
-    private val taskExecutor: TaskExecutor
+    private val taskExecutor: TaskExecutor,
+    private val batteryMonitor: BatteryMonitor
 ) : ViewModel() {
 
     private val _assistantState = MutableStateFlow<AssistantState>(AssistantState.IDLE)
@@ -53,17 +56,24 @@ class MainViewModel @Inject constructor(
     private val _currentStreamingText = MutableStateFlow("")
     val currentStreamingText: StateFlow<String> = _currentStreamingText.asStateFlow()
 
+    private val _isStandbyMode = MutableStateFlow(false)
+    val isStandbyMode: StateFlow<Boolean> = _isStandbyMode.asStateFlow()
+
     val rmsAmplitude: StateFlow<Float> = voiceRecognizer.rmsAmplitude
 
     val isModelAvailable: Boolean
         get() = gemmaEngine.isModelAvailable()
 
     private var inferenceJob: Job? = null
+    private var standbyJob: Job? = null
     private var contextWindowSize: Int = 4096
 
     private var isFirstLoad = true
 
     init {
+        batteryMonitor.startMonitoring()
+        resetStandbyTimer()
+
         viewModelScope.launch {
             voiceRecognizer.recognizedText.collect { text ->
                 if (text.isNotEmpty() && _assistantState.value == AssistantState.LISTENING) {
@@ -91,8 +101,10 @@ class MainViewModel @Inject constructor(
             jarvisTTS.isSpeaking.collect { isSpeaking ->
                 if (!isSpeaking && _assistantState.value == AssistantState.SPEAKING) {
                     _assistantState.value = AssistantState.IDLE
+                    resetStandbyTimer()
                 } else if (isSpeaking && _assistantState.value != AssistantState.SPEAKING) {
                     _assistantState.value = AssistantState.SPEAKING
+                    cancelStandbyTimer()
                 }
             }
         }
@@ -121,9 +133,43 @@ class MainViewModel @Inject constructor(
                 isFirstLoad = false
             }
         }
+
+        viewModelScope.launch {
+            batteryMonitor.batteryWarning.collect { pct ->
+                if (_assistantState.value == AssistantState.IDLE) {
+                    _assistantState.value = AssistantState.SPEAKING
+                    jarvisTTS.speak("Power reserves are at \$pct percent, sir. I recommend connecting to a power source.")
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            WakeWordService.wakeWordDetected.collect {
+                startListening()
+            }
+        }
+    }
+
+    private fun resetStandbyTimer() {
+        standbyJob?.cancel()
+        _isStandbyMode.value = false
+        standbyJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(5 * 60 * 1000) // 5 minutes
+            if (_assistantState.value == AssistantState.IDLE) {
+                _isStandbyMode.value = true
+                _assistantState.value = AssistantState.SPEAKING
+                jarvisTTS.speak("Standing by, sir.")
+            }
+        }
+    }
+
+    private fun cancelStandbyTimer() {
+        standbyJob?.cancel()
+        _isStandbyMode.value = false
     }
 
     fun startListening() {
+        cancelStandbyTimer()
         if (_assistantState.value == AssistantState.IDLE || _assistantState.value is AssistantState.ERROR || _assistantState.value == AssistantState.SPEAKING || _assistantState.value == AssistantState.THINKING) {
             inferenceJob?.cancel()
             gemmaEngine.close()
@@ -141,6 +187,7 @@ class MainViewModel @Inject constructor(
                 kotlinx.coroutines.delay(500)
                 if (_assistantState.value == AssistantState.LISTENING) {
                     _assistantState.value = AssistantState.IDLE
+                    resetStandbyTimer()
                 }
             }
         }
@@ -182,43 +229,34 @@ class MainViewModel @Inject constructor(
 
             responseFlow.collect { chunk ->
                 rawResponse += chunk
-                // Clean the streaming text dynamically so tags don't flash on screen
                 _currentStreamingText.value = intentParser.cleanStreamingText(rawResponse)
             }
 
             _currentStreamingText.value = ""
 
-            // 1. Parse Intents fully after stream is complete
             val parsedResult = intentParser.parse(rawResponse)
 
-            // 2. Execute tasks in parallel if any
             val taskResults = parsedResult.intents.map { intent ->
                 async { taskExecutor.execute(intent) }
             }.awaitAll()
 
-            // Map purely to badges for the UI Message history
             val actionBadges = taskResults.map { it.badge }
-
-            // Extract any spoken feedback overrides (e.g., permission denials)
             val spokenOverrides = taskResults.mapNotNull { it.spokenFeedback }
 
-            // 3. Save clean message with badges
             addMessage(Message(text = parsedResult.spokenText, isUser = false, actions = actionBadges))
 
-            // 4. Formulate the final spoken text
             var finalSpokenText = parsedResult.spokenText
             if (spokenOverrides.isNotEmpty()) {
                 finalSpokenText += " " + spokenOverrides.joinToString(" ")
             }
             finalSpokenText = finalSpokenText.trim()
 
-            // 5. Speak it out
             _assistantState.value = AssistantState.SPEAKING
             if (finalSpokenText.isNotBlank()) {
                 jarvisTTS.speak(finalSpokenText)
             } else {
-                // If it was purely a task command and no extra speech or overrides
                  _assistantState.value = AssistantState.IDLE
+                 resetStandbyTimer()
             }
         }
     }
@@ -231,9 +269,11 @@ class MainViewModel @Inject constructor(
 
     private fun recoverToIdle() {
         viewModelScope.launch {
+            jarvisTTS.speak("I've encountered a difficulty, sir. Systems restored.")
             kotlinx.coroutines.delay(3000)
             if (_assistantState.value is AssistantState.ERROR) {
                 _assistantState.value = AssistantState.IDLE
+                resetStandbyTimer()
             }
         }
     }
@@ -243,5 +283,6 @@ class MainViewModel @Inject constructor(
         voiceRecognizer.destroy()
         jarvisTTS.destroy()
         gemmaEngine.close()
+        batteryMonitor.stopMonitoring()
     }
 }

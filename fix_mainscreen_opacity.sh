@@ -1,0 +1,3 @@
+sed -i 's/val finalScale = if (state is AssistantState.LISTENING) pulse \* amplitudeScale else pulse/val finalScale = if (state is AssistantState.LISTENING) pulse \* amplitudeScale else pulse\n\n    val baseAlphaModifier = if (isStandbyMode) 0.3f else 1.0f/g' app/src/main/java/com/mahavtaar/jarvis/ui/MainScreen.kt
+sed -i 's/color = color.copy(alpha = alpha \* 0.3f)/color = color.copy(alpha = alpha \* 0.3f \* baseAlphaModifier)/g' app/src/main/java/com/mahavtaar/jarvis/ui/MainScreen.kt
+sed -i 's/color = ringColor.copy(alpha = 0.7f)/color = ringColor.copy(alpha = 0.7f \* baseAlphaModifier)/g' app/src/main/java/com/mahavtaar/jarvis/ui/MainScreen.kt
