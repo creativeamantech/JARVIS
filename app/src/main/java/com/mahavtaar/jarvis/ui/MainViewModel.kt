@@ -43,6 +43,8 @@ class MainViewModel @Inject constructor(
     private val _currentStreamingText = MutableStateFlow("")
     val currentStreamingText: StateFlow<String> = _currentStreamingText.asStateFlow()
 
+    val rmsAmplitude: StateFlow<Float> = voiceRecognizer.rmsAmplitude
+
     val isModelAvailable: Boolean
         get() = gemmaEngine.isModelAvailable()
 
@@ -59,8 +61,13 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             voiceRecognizer.error.collect { error ->
                 error?.let {
-                    _assistantState.value = AssistantState.ERROR(it)
-                    recoverToIdle()
+                    if (it == "SOFT_ERROR_NO_MATCH") {
+                        _assistantState.value = AssistantState.SPEAKING
+                        jarvisTTS.speak("I didn't catch that, sir.")
+                    } else {
+                        _assistantState.value = AssistantState.ERROR(it)
+                        recoverToIdle()
+                    }
                 }
             }
         }
@@ -99,10 +106,7 @@ class MainViewModel @Inject constructor(
             _currentStreamingText.value = ""
             var fullResponse = ""
 
-            // Use mock response for MVP Phase 1 testing
             val responseFlow = if (isModelAvailable) {
-                // To actually use model: gemmaEngine.generateResponseStream(text)
-                // Defaulting to mock for Phase 1 as instructed to ensure pipeline testability
                 gemmaEngine.generateMockResponseStream(text)
             } else {
                 gemmaEngine.generateMockResponseStream(text)

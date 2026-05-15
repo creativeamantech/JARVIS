@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlin.math.max
 
 @Composable
 fun MainScreen(
@@ -27,6 +28,7 @@ fun MainScreen(
     val assistantState by viewModel.assistantState.collectAsState()
     val messages by viewModel.messages.collectAsState()
     val streamingText by viewModel.currentStreamingText.collectAsState()
+    val rmsAmplitude by viewModel.rmsAmplitude.collectAsState()
 
     Column(
         modifier = Modifier
@@ -59,7 +61,7 @@ fun MainScreen(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                ArcReactorVisualizer(state = assistantState)
+                ArcReactorVisualizer(state = assistantState, rmsAmplitude = rmsAmplitude)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
@@ -93,7 +95,8 @@ fun MainScreen(
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (assistantState == AssistantState.LISTENING) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
-            )
+            ),
+            enabled = assistantState == AssistantState.IDLE || assistantState == AssistantState.LISTENING || assistantState is AssistantState.ERROR
         ) {
             Text(
                 text = if (assistantState == AssistantState.LISTENING) "STOP" else "PUSH TO TALK",
@@ -136,7 +139,7 @@ fun MessageBubble(message: Message, isStreaming: Boolean) {
 }
 
 @Composable
-fun ArcReactorVisualizer(state: AssistantState) {
+fun ArcReactorVisualizer(state: AssistantState, rmsAmplitude: Float) {
     val infiniteTransition = rememberInfiniteTransition()
 
     val baseRotation by infiniteTransition.animateFloat(
@@ -148,10 +151,14 @@ fun ArcReactorVisualizer(state: AssistantState) {
         )
     )
 
+    // Normalize RMS amplitude, typical values are between -2f and 10f. Let's map it to a scale modifier
+    val normalizedAmplitude = max(0f, (rmsAmplitude + 2f) / 10f)
+    val amplitudeScale = 1f + (normalizedAmplitude * 0.5f)
+
     val pulse by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = when (state) {
-            is AssistantState.LISTENING -> 1.5f
+            is AssistantState.LISTENING -> 1.2f
             is AssistantState.THINKING -> 1.3f
             is AssistantState.SPEAKING -> 1.8f
             else -> 1.1f
@@ -167,6 +174,9 @@ fun ArcReactorVisualizer(state: AssistantState) {
         )
     )
 
+    // Combine programmatic pulse with actual mic amplitude when listening
+    val finalScale = if (state is AssistantState.LISTENING) pulse * amplitudeScale else pulse
+
     Canvas(modifier = Modifier.size(120.dp)) {
         val center = Offset(size.width / 2, size.height / 2)
         val baseRadius = size.width / 3f
@@ -176,15 +186,15 @@ fun ArcReactorVisualizer(state: AssistantState) {
             val scale = 1f + (i * 0.2f)
             val alpha = when (state) {
                 is AssistantState.LISTENING -> (1f - i * 0.2f)
-                is AssistantState.SPEAKING -> pulse * (1f - i * 0.15f)
-                is AssistantState.THINKING -> pulse * (1f - i * 0.15f)
+                is AssistantState.SPEAKING -> finalScale * (1f - i * 0.15f)
+                is AssistantState.THINKING -> finalScale * (1f - i * 0.15f)
                 else -> (1f - i * 0.2f) * 0.6f
             }
             val color = if (state is AssistantState.ERROR) Color(0xFFFF3333) else Color(0xFF00BFFF)
 
             drawCircle(
                 color = color.copy(alpha = alpha * 0.3f),
-                radius = baseRadius * scale * pulse,
+                radius = baseRadius * scale * finalScale,
                 center = center,
                 style = Stroke(width = (4 - i).dp.toPx())
             )

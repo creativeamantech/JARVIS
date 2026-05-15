@@ -25,6 +25,9 @@ class VoiceRecognizer @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _rmsAmplitude = MutableStateFlow(0f)
+    val rmsAmplitude: StateFlow<Float> = _rmsAmplitude.asStateFlow()
+
     fun startListening() {
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
@@ -38,21 +41,34 @@ class VoiceRecognizer @Inject constructor(
                     _isListening.value = true
                     _error.value = null
                     _recognizedText.value = ""
+                    _rmsAmplitude.value = 0f
                 }
 
                 override fun onBeginningOfSpeech() {}
 
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onRmsChanged(rmsdB: Float) {
+                    _rmsAmplitude.value = rmsdB
+                }
 
                 override fun onBufferReceived(buffer: ByteArray?) {}
 
                 override fun onEndOfSpeech() {
                     _isListening.value = false
+                    _rmsAmplitude.value = 0f
                 }
 
                 override fun onError(errorId: Int) {
                     _isListening.value = false
-                    _error.value = "Error during speech recognition: \$errorId"
+                    _rmsAmplitude.value = 0f
+
+                    when (errorId) {
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                            _error.value = "SOFT_ERROR_NO_MATCH"
+                        }
+                        else -> {
+                            _error.value = "Error during speech recognition: \$errorId"
+                        }
+                    }
                 }
 
                 override fun onResults(results: Bundle?) {
@@ -81,6 +97,7 @@ class VoiceRecognizer @Inject constructor(
     fun stopListening() {
         speechRecognizer?.stopListening()
         _isListening.value = false
+        _rmsAmplitude.value = 0f
     }
 
     fun destroy() {
